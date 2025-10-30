@@ -1,0 +1,331 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: caddy-config
+  namespace: caddy-system
+data:
+  Caddyfile: |
+    {
+        # Expose l'API Caddy en local
+        admin 0.0.0.0:2019
+
+        # Désactive les redirections HTTPS automatiques pour debug
+        auto_https disable_redirects
+
+        # Configuration du certificat wildcard avec OVH DNS
+        acme_dns ovh {
+            endpoint {$OVH_ENDPOINT}
+            application_key {$OVH_APPLICATION_KEY}
+            application_secret {$OVH_APPLICATION_SECRET}
+            consumer_key {$OVH_CONSUMER_KEY}
+        }
+    }
+
+    # Certificat wildcard pour *.ryvie.ovh
+    *.ryvie.ovh {
+        tls {
+            dns ovh {
+                endpoint {$OVH_ENDPOINT}
+                application_key {$OVH_APPLICATION_KEY}
+                application_secret {$OVH_APPLICATION_SECRET}
+                consumer_key {$OVH_CONSUMER_KEY}
+            }
+        }
+    }
+
+    # -------------------------
+    # Portainer
+    # -------------------------
+    portainer.ryvie.ovh {
+        reverse_proxy portainer-service.portainer.svc.cluster.local:9000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+            health_uri /api/status
+            health_interval 10s
+            health_timeout 5s
+            health_status 2xx
+        }
+
+        log {
+            output stdout
+            format json
+            level INFO
+        }
+        encode gzip zstd
+        header {
+            Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+            X-Content-Type-Options "nosniff"
+            X-Frame-Options "SAMEORIGIN"
+            X-XSS-Protection "1; mode=block"
+        }
+        header -Server
+        tls drissbenedaahne@gmail.com
+    }
+
+    http://portainer.ryvie.ovh {
+        redir https://{host}{uri} permanent
+    }
+
+    # -------------------------
+    # Zitadel
+    # -------------------------
+    zitadel.ryvie.ovh {
+        reverse_proxy h2c://zitadel.netbird.svc.cluster.local:8080 {
+            header_up Host zitadel.ryvie.ovh
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-Proto https
+            header_up X-Forwarded-Host zitadel.ryvie.ovh
+        }
+
+        encode gzip zstd
+        log {
+            output stdout
+            format json
+            level INFO
+        }
+        header {
+            Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+            X-Content-Type-Options "nosniff"
+            X-Frame-Options "DENY"
+            X-XSS-Protection "1; mode=block"
+        }
+        header -Server
+        tls drissbenedaahne@gmail.com
+    }
+
+    http://zitadel.ryvie.ovh {
+        redir https://{host}{uri} permanent
+    }
+
+    # -------------------------
+    # NetBird
+    # -------------------------
+    netbird.ryvie.ovh {
+        reverse_proxy /api/* netbird-management.netbird.svc.cluster.local:80 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-Proto https
+            header_up X-Forwarded-Host {host}
+            header_up Authorization {http.request.header.Authorization}
+        }
+
+        reverse_proxy /management.ManagementService/* h2c://netbird-management.netbird.svc.cluster.local:80 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-Proto https
+            header_up X-Forwarded-Host {host}
+            header_up Authorization {http.request.header.Authorization}
+        }
+
+        reverse_proxy /signalexchange.SignalExchange/* h2c://netbird-signal.netbird.svc.cluster.local:80 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-Proto https
+            header_up X-Forwarded-Host {host}
+            header_up Authorization {http.request.header.Authorization}
+        }
+
+        reverse_proxy /relay* netbird-relay.netbird.svc.cluster.local:80 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-Proto https
+            header_up X-Forwarded-Host {host}
+        }
+
+        reverse_proxy /nb-auth* netbird-dashboard.netbird.svc.cluster.local:80 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-Proto https
+            header_up X-Forwarded-Host {host}
+        }
+
+        reverse_proxy /* netbird-dashboard.netbird.svc.cluster.local:80 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-Proto https
+            header_up X-Forwarded-Host {host}
+        }
+
+        encode gzip zstd
+        log {
+            output stdout
+            format json
+            level INFO
+        }
+        header {
+            Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+            X-Content-Type-Options "nosniff"
+            X-Frame-Options "SAMEORIGIN"
+            X-XSS-Protection "1; mode=block"
+        }
+        header -Server
+        tls drissbenedaahne@gmail.com
+    }
+
+    http://netbird.ryvie.ovh {
+        redir https://{host}{uri} permanent
+    }
+
+    # -------------------------
+    # RDrive
+    # -------------------------
+    rdrive.ryvie.ovh {
+        reverse_proxy 100.96.217.19:3010 {
+            transport http {
+                dial_timeout 30s
+                response_header_timeout 30s
+                keepalive 60s
+            }
+            fail_duration 30s
+            max_fails 3
+            unhealthy_request_count 3
+        }
+    }
+
+    # -------------------------
+    # RTransfer
+    # -------------------------
+    rtransfer.ryvie.ovh {
+        reverse_proxy 100.96.217.19:3011 {
+            transport http {
+                dial_timeout 30s
+                response_header_timeout 30s
+                keepalive 60s
+            }
+            fail_duration 30s
+            max_fails 3
+            unhealthy_request_count 3
+        }
+    }
+
+    # -------------------------
+    # RDrop
+    # -------------------------
+    rdrop.ryvie.ovh {
+        reverse_proxy 100.96.217.19:8080 {
+            transport http {
+                dial_timeout 30s
+                response_header_timeout 30s
+                keepalive 60s
+            }
+            fail_duration 30s
+            max_fails 3
+            unhealthy_request_count 3
+        }
+    }
+
+    # -------------------------
+    # App
+    # -------------------------
+    app.ryvie.ovh {
+        reverse_proxy 100.96.217.19:3000 {
+            transport http {
+                dial_timeout 30s
+                response_header_timeout 30s
+                keepalive 60s
+            }
+            fail_duration 30s
+            max_fails 3
+            unhealthy_request_count 3
+        }
+    }
+
+    # -------------------------
+    # Status
+    # -------------------------
+    status.ryvie.ovh {
+        reverse_proxy 100.96.217.19:3002 {
+            transport http {
+                dial_timeout 30s
+                response_header_timeout 30s
+                keepalive 60s
+            }
+            fail_duration 30s
+            max_fails 3
+            unhealthy_request_count 3
+        }
+    }
+
+    # -------------------------
+    # Backend RDrive
+    # -------------------------
+    backend-rdrive.ryvie.ovh {
+        reverse_proxy 100.96.217.19:4000 {
+            transport http {
+                dial_timeout 30s
+                response_header_timeout 30s
+                keepalive 60s
+            }
+            fail_duration 30s
+            max_fails 3
+            unhealthy_request_count 3
+        }
+        @websockets {
+            header Connection *Upgrade*
+            header Upgrade websocket
+        }
+        reverse_proxy @websockets 100.96.217.19:4000 {
+            transport http {
+                dial_timeout 30s
+                keepalive 60s
+            }
+        }
+    }
+
+    # -------------------------
+    # Connector RDrive
+    # -------------------------
+    connector-rdrive.ryvie.ovh {
+        reverse_proxy 100.96.217.19:5000 {
+            transport http {
+                dial_timeout 30s
+                response_header_timeout 30s
+                keepalive 60s
+            }
+            fail_duration 30s
+            max_fails 3
+            unhealthy_request_count 3
+        }
+    }
+
+    # -------------------------
+    # Document RDrive
+    # -------------------------
+    document-rdrive.ryvie.ovh {
+        reverse_proxy 100.96.217.19:8090 {
+            transport http {
+                dial_timeout 30s
+                response_header_timeout 30s
+                keepalive 60s
+            }
+            fail_duration 30s
+            max_fails 3
+            unhealthy_request_count 3
+        }
+    }
+
+    # -------------------------
+    # Exposition API Caddy
+    # -------------------------
+    caddy.ryvie.ovh {
+        # Reverse proxy vers l'API interne de Caddy
+        reverse_proxy 127.0.0.1:2019
+
+        # TLS avec Let's Encrypt (remplacez par votre email)
+        tls drissbenedaahne@gmail.com
+
+        # Authentification basique
+        basicauth {
+            admin $2a$14$zkRJ1/0rzBAzrJOA/tupg.LJcDnv7RuNGJIG66GusrZhFsiCH254e
+        }
+
+        # Headers de sécurité
+        header {
+            Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+            X-Content-Type-Options "nosniff"
+            X-Frame-Options "SAMEORIGIN"
+            X-XSS-Protection "1; mode=block"
+        }
+    }

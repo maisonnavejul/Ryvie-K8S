@@ -1,0 +1,244 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: caddy-system
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: caddy-config
+  namespace: caddy-system
+data:
+  Caddyfile: |
+    {
+        auto_https disable_redirects
+    }
+
+    # -------------------------
+    # Portainer
+    # -------------------------
+    portainer.ryvie.ovh {
+        reverse_proxy portainer-service.portainer.svc.cluster.local:9000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+            health_uri /api/status
+            health_interval 10s
+            health_timeout 5s
+            health_status 2xx
+        }
+
+        log {
+            output stdout
+            format json
+            level INFO
+        }
+        encode gzip zstd
+        header {
+            Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+            X-Content-Type-Options "nosniff"
+            X-Frame-Options "SAMEORIGIN"
+            X-XSS-Protection "1; mode=block"
+        }
+        header -Server
+        tls drissbenedaahne@gmail.com
+    }
+
+    http://portainer.ryvie.ovh {
+        redir https://{host}{uri} permanent
+    }
+
+    # -------------------------
+    # Zitadel
+    # -------------------------
+    zitadel.ryvie.ovh {
+        reverse_proxy h2c://zitadel.netbird.svc.cluster.local:8080 {
+            header_up Host zitadel.ryvie.ovh
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-Proto https
+            header_up X-Forwarded-Host zitadel.ryvie.ovh
+        }
+
+        encode gzip zstd
+        log {
+            output stdout
+            format json
+            level INFO
+        }
+        header {
+            Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+            X-Content-Type-Options "nosniff"
+            X-Frame-Options "DENY"
+            X-XSS-Protection "1; mode=block"
+        }
+        header -Server
+        tls drissbenedaahne@gmail.com
+    }
+
+    http://zitadel.ryvie.ovh {
+        redir https://{host}{uri} permanent
+    }
+
+    # -------------------------
+    # NetBird
+    # -------------------------
+    netbird.ryvie.ovh {
+        reverse_proxy /api/* netbird-management.netbird.svc.cluster.local:80 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-Proto https
+            header_up X-Forwarded-Host {host}
+            header_up Authorization {http.request.header.Authorization}
+        }
+
+        reverse_proxy /management.ManagementService/* h2c://netbird-management.netbird.svc.cluster.local:80 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-Proto https
+            header_up X-Forwarded-Host {host}
+            header_up Authorization {http.request.header.Authorization}
+        }
+
+        reverse_proxy /signalexchange.SignalExchange/* h2c://netbird-signal.netbird.svc.cluster.local:80 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-Proto https
+            header_up X-Forwarded-Host {host}
+            header_up Authorization {http.request.header.Authorization}
+        }
+
+        reverse_proxy /relay* netbird-relay.netbird.svc.cluster.local:80 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-Proto https
+            header_up X-Forwarded-Host {host}
+        }
+
+        reverse_proxy /nb-auth* netbird-dashboard.netbird.svc.cluster.local:80 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-Proto https
+            header_up X-Forwarded-Host {host}
+        }
+
+        reverse_proxy /* netbird-dashboard.netbird.svc.cluster.local:80 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-Proto https
+            header_up X-Forwarded-Host {host}
+        }
+
+        encode gzip zstd
+        log {
+            output stdout
+            format json
+            level INFO
+        }
+        header {
+            Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+            X-Content-Type-Options "nosniff"
+            X-Frame-Options "SAMEORIGIN"
+            X-XSS-Protection "1; mode=block"
+        }
+        header -Server
+        tls drissbenedaahne@gmail.com
+    }
+
+    http://netbird.ryvie.ovh {
+        redir https://{host}{uri} permanent
+    }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: caddy-data
+  namespace: caddy-system
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: caddy-config-dir
+  namespace: caddy-system
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: caddy
+  namespace: caddy-system
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: caddy
+  template:
+    metadata:
+      labels:
+        app: caddy
+    spec:
+      containers:
+        - name: caddy
+          image: julescloud/netbird-caddy:latest
+          ports:
+            - name: http
+              containerPort: 80
+            - name: https
+              containerPort: 443
+          volumeMounts:
+            - name: caddy-config
+              mountPath: /etc/caddy/Caddyfile
+              subPath: Caddyfile
+            - name: caddy-data
+              mountPath: /data
+            - name: caddy-config-dir
+              mountPath: /config
+          env:
+            - name: OVH_ENDPOINT
+              value: "ovh-eu"
+            - name: OVH_APPLICATION_KEY
+              value: "fd1988b6e2ccff3c"
+            - name: OVH_APPLICATION_SECRET
+              value: "d1a7d45bd57b3bd64693cc9ada41eb9c"
+            - name: OVH_CONSUMER_KEY
+              value: "07b32747234bfa91420301296ec2190f"
+      volumes:
+        - name: caddy-config
+          configMap:
+            name: caddy-config
+        - name: caddy-data
+          persistentVolumeClaim:
+            claimName: caddy-data
+        - name: caddy-config-dir
+          persistentVolumeClaim:
+            claimName: caddy-config-dir
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: caddy-service
+  namespace: caddy-system
+spec:
+  type: LoadBalancer
+  selector:
+    app: caddy
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP
+    - name: https
+      port: 443
+      targetPort: 443
+      protocol: TCP

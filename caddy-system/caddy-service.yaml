@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: caddy-service
+  namespace: caddy-system
+spec:
+  selector:
+    app: caddy
+  type: LoadBalancer
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+    - name: https
+      port: 443
+      targetPort: 443
