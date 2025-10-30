@@ -83,6 +83,11 @@ echo ""
 POSTGRES_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
 ZITADEL_MASTERKEY=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
 
+# Generate a password that meets Zitadel complexity requirements:
+# - At least 8 characters
+# - Contains uppercase, lowercase, number, and symbol
+ZITADEL_ADMIN_PASSWORD="Admin$(openssl rand -base64 12 | tr -d '=+/')!@#"
+
 # Create Zitadel manifests
 cat > k8s-manifests/zitadel/zitadel-all.yaml <<EOF
 # Namespace
@@ -301,10 +306,7 @@ spec:
         - name: ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME
           value: "zitadel-admin"
         - name: ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: postgres-secret
-              key: POSTGRES_PASSWORD
+          value: "$ZITADEL_ADMIN_PASSWORD"
         - name: ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORDCHANGEREQUIRED
           value: "false"
         - name: ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_USERNAME
