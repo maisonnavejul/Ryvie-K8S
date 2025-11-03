@@ -10,38 +10,43 @@ NC='\033[0m' # No Color
 
 echo -e "${YELLOW}=== Caddy Service Deployment & IP Retrieval Script ===${NC}\n"
 
-# Prompt for OVH credentials
-echo -e "${YELLOW}Please enter your OVH credentials:${NC}"
-read -p "OVH Endpoint (default: ovh-eu): " OVH_ENDPOINT
+# Get the directory where the script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Load environment variables from .env file
+ENV_FILE="$SCRIPT_DIR/.env"
+
+if [ ! -f "$ENV_FILE" ]; then
+    echo -e "${RED}Error: .env file not found at $ENV_FILE${NC}"
+    exit 1
+fi
+
+echo -e "${YELLOW}Loading configuration from .env file...${NC}"
+source "$ENV_FILE"
+
+# Validate required variables
+if [ -z "$BASE_DOMAIN" ]; then
+    echo -e "${RED}Error: BASE_DOMAIN is not set in .env file${NC}"
+    exit 1
+fi
+
+if [ -z "$OVH_APPLICATION_KEY" ] || [ -z "$OVH_APPLICATION_SECRET" ] || [ -z "$OVH_CONSUMER_KEY" ]; then
+    echo -e "${RED}Error: OVH credentials are not set in .env file${NC}"
+    exit 1
+fi
+
+if [ -z "$TLS_EMAIL" ]; then
+    echo -e "${RED}Error: TLS_EMAIL is not set in .env file${NC}"
+    exit 1
+fi
+
+# Set default for OVH_ENDPOINT if not provided
 OVH_ENDPOINT=${OVH_ENDPOINT:-ovh-eu}
 
-read -p "OVH Application Key: " OVH_APPLICATION_KEY
-if [ -z "$OVH_APPLICATION_KEY" ]; then
-    echo -e "${RED}Error: OVH Application Key is required${NC}"
-    exit 1
-fi
-
-read -sp "OVH Application Secret: " OVH_APPLICATION_SECRET
-echo
-if [ -z "$OVH_APPLICATION_SECRET" ]; then
-    echo -e "${RED}Error: OVH Application Secret is required${NC}"
-    exit 1
-fi
-
-read -sp "OVH Consumer Key: " OVH_CONSUMER_KEY
-echo
-if [ -z "$OVH_CONSUMER_KEY" ]; then
-    echo -e "${RED}Error: OVH Consumer Key is required${NC}"
-    exit 1
-fi
-
-read -p "Email for TLS certificates: " TLS_EMAIL
-if [ -z "$TLS_EMAIL" ]; then
-    echo -e "${RED}Error: Email is required${NC}"
-    exit 1
-fi
-
-echo -e "\n${GREEN}Credentials collected successfully${NC}\n"
+echo -e "${GREEN}Configuration loaded successfully${NC}"
+echo -e "${GREEN}  BASE_DOMAIN: $BASE_DOMAIN${NC}"
+echo -e "${GREEN}  TLS_EMAIL: $TLS_EMAIL${NC}"
+echo -e "${GREEN}  OVH_ENDPOINT: $OVH_ENDPOINT${NC}\n"
 
 # Create manifests directory
 MANIFEST_DIR="k8s-manifests/caddy-system"
@@ -76,7 +81,7 @@ data:
     # -------------------------
     # Portainer
     # -------------------------
-    portainer.ryvie.ovh {
+    portainer.BASE_DOMAIN_PLACEHOLDER {
         reverse_proxy portainer-service.portainer.svc.cluster.local:9000 {
             header_up Host {host}
             header_up X-Real-IP {remote_host}
@@ -104,19 +109,19 @@ data:
         tls TLS_EMAIL_PLACEHOLDER
     }
 
-    http://portainer.ryvie.ovh {
+    http://portainer.BASE_DOMAIN_PLACEHOLDER {
         redir https://{host}{uri} permanent
     }
 
     # -------------------------
     # Zitadel
     # -------------------------
-    zitadel.ryvie.ovh {
+    zitadel.BASE_DOMAIN_PLACEHOLDER {
         reverse_proxy h2c://zitadel.netbird.svc.cluster.local:8080 {
-            header_up Host zitadel.ryvie.ovh
+            header_up Host zitadel.BASE_DOMAIN_PLACEHOLDER
             header_up X-Real-IP {remote_host}
             header_up X-Forwarded-Proto https
-            header_up X-Forwarded-Host zitadel.ryvie.ovh
+            header_up X-Forwarded-Host zitadel.BASE_DOMAIN_PLACEHOLDER
         }
 
         encode gzip zstd
@@ -135,14 +140,14 @@ data:
         tls TLS_EMAIL_PLACEHOLDER
     }
 
-    http://zitadel.ryvie.ovh {
+    http://zitadel.BASE_DOMAIN_PLACEHOLDER {
         redir https://{host}{uri} permanent
     }
 
     # -------------------------
     # NetBird
     # -------------------------
-    netbird.ryvie.ovh {
+    netbird.BASE_DOMAIN_PLACEHOLDER {
         reverse_proxy /api/* netbird-management.netbird.svc.cluster.local:80 {
             header_up Host {host}
             header_up X-Real-IP {remote_host}
@@ -204,13 +209,14 @@ data:
         tls TLS_EMAIL_PLACEHOLDER
     }
 
-    http://netbird.ryvie.ovh {
+    http://netbird.BASE_DOMAIN_PLACEHOLDER {
         redir https://{host}{uri} permanent
     }
 EOF
 
-# Replace email placeholder
+# Replace placeholders
 sed -i "s/TLS_EMAIL_PLACEHOLDER/$TLS_EMAIL/g" "$MANIFEST_DIR/configmap.yaml"
+sed -i "s/BASE_DOMAIN_PLACEHOLDER/$BASE_DOMAIN/g" "$MANIFEST_DIR/configmap.yaml"
 echo -e "${GREEN}✓ configmap.yaml created${NC}\n"
 
 # Generate PVC manifests
@@ -364,9 +370,9 @@ while [ $ELAPSED -lt $MAX_WAIT ]; do
         echo -e "\n${YELLOW}Next steps:${NC}"
         echo "1. Update your DNS records to point to: ${EXTERNAL_IP}"
         echo "2. Verify the service is accessible:"
-        echo "   curl -I https://portainer.ryvie.ovh"
-        echo "   curl -I https://zitadel.ryvie.ovh"
-        echo "   curl -I https://netbird.ryvie.ovh"
+        echo "   curl -I https://portainer.$BASE_DOMAIN"
+        echo "   curl -I https://zitadel.$BASE_DOMAIN"
+        echo "   curl -I https://netbird.$BASE_DOMAIN"
         
         exit 0
     fi

@@ -9,28 +9,30 @@ echo "🚀 NetBird + Zitadel Automated Setup"
 echo "════════════════════════════════════════════════════"
 echo ""
 
-# Ask for domain name
-read -p "Enter your domain name (e.g., ryvie.ovh): " BASE_DOMAIN
+# Get domain from environment variable or stdin
+if [[ -z "$BASE_DOMAIN" ]]; then
+    # Try to read from stdin (for piped input)
+    if [ -t 0 ]; then
+        # stdin is a terminal, prompt for input
+        read -p "Enter your domain name (e.g., ryvie.ovh): " BASE_DOMAIN
+    else
+        # stdin is not a terminal, read from pipe
+        read BASE_DOMAIN
+    fi
+fi
 
 if [[ -z "$BASE_DOMAIN" ]]; then
     echo "❌ Domain name is required"
     exit 1
 fi
 
-# Confirm with user
+# Display configuration (no confirmation needed when automated)
 echo ""
 echo "Configuration:"
 echo "  Base Domain: $BASE_DOMAIN"
 echo "  Zitadel URL: https://zitadel.$BASE_DOMAIN"
 echo "  NetBird URL: https://netbird.$BASE_DOMAIN"
 echo ""
-read -p "Is this correct? (y/n): " -n 1 -r
-echo ""
-
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "❌ Setup cancelled"
-    exit 1
-fi
 
 # ==============================
 # CONFIGURATION
