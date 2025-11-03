@@ -92,11 +92,16 @@ check_certificate() {
     local domain=$1
     local namespace="caddy-system"
     
-    # Get the first Caddy pod
-    local pod=$(kubectl get pods -n $namespace -l app=caddy -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    # Check caddy-0 first (primary pod in StatefulSet)
+    local pod="caddy-0"
+    
+    # Verify pod exists and is running
+    if ! kubectl get pod $pod -n $namespace &>/dev/null; then
+        # Fallback to any running Caddy pod
+        pod=$(kubectl get pods -n $namespace -l app=caddy --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    fi
     
     if [ -z "$pod" ]; then
-        echo -e "${RED}❌ No Caddy pod found${NC}"
         return 1
     fi
     

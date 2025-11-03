@@ -219,44 +219,19 @@ sed -i "s/TLS_EMAIL_PLACEHOLDER/$TLS_EMAIL/g" "$MANIFEST_DIR/configmap.yaml"
 sed -i "s/BASE_DOMAIN_PLACEHOLDER/$BASE_DOMAIN/g" "$MANIFEST_DIR/configmap.yaml"
 echo -e "${GREEN}✓ configmap.yaml created${NC}\n"
 
-# Generate PVC manifests
-echo -e "${YELLOW}Generating pvc.yaml...${NC}"
-cat > "$MANIFEST_DIR/pvc.yaml" <<EOF
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: caddy-data
-  namespace: caddy-system
-spec:
-  accessModes:
-    - ReadWriteMany
-  resources:
-    requests:
-      storage: 1Gi
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: caddy-config-dir
-  namespace: caddy-system
-spec:
-  accessModes:
-    - ReadWriteMany
-  resources:
-    requests:
-      storage: 1Gi
-EOF
-echo -e "${GREEN}✓ pvc.yaml created${NC}\n"
+# Note: PVCs will be created by StatefulSet volumeClaimTemplates
+echo -e "${YELLOW}PVCs will be dynamically created by StatefulSet${NC}\n"
 
-# Generate deployment manifest
-echo -e "${YELLOW}Generating deployment.yaml...${NC}"
-cat > "$MANIFEST_DIR/deployment.yaml" <<EOF
+# Generate StatefulSet manifest for scalability
+echo -e "${YELLOW}Generating statefulset.yaml...${NC}"
+cat > "$MANIFEST_DIR/statefulset.yaml" <<EOF
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: caddy
   namespace: caddy-system
 spec:
+  serviceName: caddy-headless
   replicas: 2
   selector:
     matchLabels:
@@ -291,22 +266,61 @@ spec:
               value: "$OVH_APPLICATION_SECRET"
             - name: OVH_CONSUMER_KEY
               value: "$OVH_CONSUMER_KEY"
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
       volumes:
         - name: caddy-config
           configMap:
             name: caddy-config
-        - name: caddy-data
-          persistentVolumeClaim:
-            claimName: caddy-data
-        - name: caddy-config-dir
-          persistentVolumeClaim:
-            claimName: caddy-config-dir
+  volumeClaimTemplates:
+    - metadata:
+        name: caddy-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+    - metadata:
+        name: caddy-config-dir
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
 EOF
-echo -e "${GREEN}✓ deployment.yaml created${NC}\n"
+echo -e "${GREEN}✓ statefulset.yaml created${NC}\n"
 
-# Generate service manifest
+# Generate service manifests
 echo -e "${YELLOW}Generating service.yaml...${NC}"
 cat > "$MANIFEST_DIR/service.yaml" <<EOF
+# Headless service for StatefulSet
+apiVersion: v1
+kind: Service
+metadata:
+  name: caddy-headless
+  namespace: caddy-system
+spec:
+  clusterIP: None
+  selector:
+    app: caddy
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP
+    - name: https
+      port: 443
+      targetPort: 443
+      protocol: TCP
+---
+# LoadBalancer service for external access
 apiVersion: v1
 kind: Service
 metadata:
@@ -334,15 +348,14 @@ echo -e "${GREEN}All manifests created in ${MANIFEST_DIR}/${NC}\n"
 echo -e "${YELLOW}Applying Kubernetes manifests...${NC}"
 kubectl apply -f "$MANIFEST_DIR/namespace.yaml"
 kubectl apply -f "$MANIFEST_DIR/configmap.yaml"
-kubectl apply -f "$MANIFEST_DIR/pvc.yaml"
-kubectl apply -f "$MANIFEST_DIR/deployment.yaml"
 kubectl apply -f "$MANIFEST_DIR/service.yaml"
+kubectl apply -f "$MANIFEST_DIR/statefulset.yaml"
 echo -e "${GREEN}✓ Manifests applied${NC}\n"
 
-# Wait for deployment to be ready
-echo -e "${YELLOW}Waiting for Caddy deployment to be ready...${NC}"
-kubectl wait --for=condition=available --timeout=300s deployment/caddy -n caddy-system
-echo -e "${GREEN}✓ Deployment is ready${NC}\n"
+# Wait for StatefulSet to be ready
+echo -e "${YELLOW}Waiting for Caddy StatefulSet to be ready...${NC}"
+kubectl wait --for=jsonpath='{.status.readyReplicas}'=2 --timeout=300s statefulset/caddy -n caddy-system || echo -e "${YELLOW}⚠️  Waiting for all replicas...${NC}"
+echo -e "${GREEN}✓ StatefulSet is ready${NC}\n"
 
 # Wait for at least one pod to be ready
 echo -e "${YELLOW}Waiting for Caddy pods to be ready...${NC}"

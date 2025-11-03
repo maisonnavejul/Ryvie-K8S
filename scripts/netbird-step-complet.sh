@@ -130,7 +130,7 @@ metadata:
   namespace: $NAMESPACE
 spec:
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany
   resources:
     requests:
       storage: 10Gi
@@ -144,7 +144,7 @@ metadata:
   namespace: $NAMESPACE
 spec:
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany
   resources:
     requests:
       storage: 1Gi
@@ -742,7 +742,7 @@ spec:
   capacity:
     storage: 10Gi
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany
   persistentVolumeReclaimPolicy: Retain
   hostPath:
     path: /tmp/netbird-data
@@ -755,7 +755,7 @@ metadata:
   namespace: $NAMESPACE 
 spec:
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany
   resources:
     requests:
       storage: 10Gi
