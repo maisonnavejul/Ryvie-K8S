@@ -115,7 +115,7 @@ TLS_EMAIL=your-email@example.com
 MAX_RETRIES=60
 
 # Optional: Delay between retries in seconds (default: 10)
-RETRY_DELAY=10
+RETRY_DELAY=10n
 ENVEOF
     
     log_success "Template .env file created at: $ENV_FILE"
