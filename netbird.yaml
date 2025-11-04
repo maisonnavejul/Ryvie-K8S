@@ -1,0 +1,41 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: netbird-client
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: netbird-client
+  namespace: netbird-client
+spec:
+  selector:
+    matchLabels:
+      app: netbird-client
+  template:
+    metadata:
+      labels:
+        app: netbird-client
+    spec:
+      hostNetwork: true
+      containers:
+      - name: netbird
+        image: netbirdio/netbird:latest
+        env:
+        - name: NB_SETUP_KEY
+          value: "1720D812-14C3-473D-9A13-62E18E86D26E"
+        - name: NB_MANAGEMENT_URL
+          value: "https://netbird.ryvie.ovh"
+        - name: NB_HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NB_LOG_LEVEL
+          value: "info"
+        securityContext:
+          capabilities:
+            add:
+              - NET_ADMIN
+              - SYS_RESOURCE
+              - SYS_ADMIN
