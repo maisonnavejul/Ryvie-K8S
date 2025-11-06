@@ -811,10 +811,22 @@ echo -e "${GREEN}✅ PAT Retrieved${NC}\n"
 # ════════════════════════════════════════════════════════════════════
 # PART 3: CONFIGURE ZITADEL FOR NETBIRD
 # ════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════
+# PART 3: CONFIGURE ZITADEL FOR NETBIRD
+# ════════════════════════════════════════════════════════════════════
 
 echo -e "${YELLOW}════════════════════════════════════════════════════${NC}"
 echo -e "${YELLOW}⚙️  STEP 3: Configuring Zitadel for NetBird${NC}"
 echo -e "${YELLOW}════════════════════════════════════════════════════${NC}\n"
+
+# Wait for Zitadel pod to be ready first
+echo -e "${YELLOW}Waiting for Zitadel pod to be ready...${NC}"
+kubectl wait --for=condition=ready pod -l app=zitadel -n $NAMESPACE --timeout=600s
+echo -e "${GREEN}✅ Zitadel pod is ready${NC}\n"
+
+# Wait for ingress and SSL to stabilize
+echo -e "${YELLOW}Waiting for ingress and SSL to stabilize (30 seconds)...${NC}"
+sleep 30
 
 # Wait for Zitadel API to be fully operational
 echo -e "${YELLOW}Waiting for Zitadel API to be fully operational...${NC}"
@@ -914,32 +926,64 @@ echo -e "${BLUE}Creating project...${NC}"
 PROJECT_JSON=$(curl -sS -X POST "${hdr_org[@]}" "$ZITADEL_BASE/management/v1/projects" -d "{\"name\":\"$PROJECT_NAME\"}")
 PROJECT_ID=$(echo "$PROJECT_JSON" | jq -r '.id // empty')
 
+if [[ -z "$PROJECT_ID" ]]; then
+    echo -e "${RED}❌ Failed to create project${NC}"
+    echo -e "${YELLOW}Response:${NC}"
+    echo "$PROJECT_JSON" | jq '.' 2>/dev/null || echo "$PROJECT_JSON"
+    exit 1
+fi
+echo -e "${GREEN}✅ Project ID: $PROJECT_ID${NC}"
+
 echo -e "${BLUE}Creating Dashboard app...${NC}"
 DASHBOARD_JSON=$(curl -sS -X POST "${hdr_org[@]}" "$ZITADEL_BASE/management/v1/projects/$PROJECT_ID/apps/oidc" \
     -d "{\"name\":\"$DASHBOARD_NAME\",\"redirectUris\":$(printf '%s\n' "${DASHBOARD_REDIRECTS[@]}" | jq -R . | jq -s .),\"postLogoutRedirectUris\":[\"https://$NETBIRD_DOMAIN/\"],\"responseTypes\":[\"OIDC_RESPONSE_TYPE_CODE\"],\"grantTypes\":[\"OIDC_GRANT_TYPE_AUTHORIZATION_CODE\",\"OIDC_GRANT_TYPE_REFRESH_TOKEN\"],\"appType\":\"OIDC_APP_TYPE_USER_AGENT\",\"authMethodType\":\"OIDC_AUTH_METHOD_TYPE_NONE\",\"version\":\"OIDC_VERSION_1_0\",\"devMode\":false,\"accessTokenType\":\"OIDC_TOKEN_TYPE_JWT\",\"accessTokenRoleAssertion\":true,\"skipNativeAppSuccessPage\":true}")
 DASHBOARD_APP_ID=$(echo "$DASHBOARD_JSON" | jq -r '.clientId // empty')
+
+if [[ -z "$DASHBOARD_APP_ID" ]]; then
+    echo -e "${RED}❌ Failed to create Dashboard app${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✅ Dashboard App Client ID: $DASHBOARD_APP_ID${NC}"
 
 echo -e "${BLUE}Creating CLI app...${NC}"
 CLI_JSON=$(curl -sS -X POST "${hdr_org[@]}" "$ZITADEL_BASE/management/v1/projects/$PROJECT_ID/apps/oidc" \
     -d "{\"name\":\"$CLI_NAME\",\"redirectUris\":$(printf '%s\n' "${CLI_REDIRECTS[@]}" | jq -R . | jq -s .),\"postLogoutRedirectUris\":[\"http://localhost:53000/\"],\"responseTypes\":[\"OIDC_RESPONSE_TYPE_CODE\"],\"grantTypes\":[\"OIDC_GRANT_TYPE_AUTHORIZATION_CODE\",\"OIDC_GRANT_TYPE_DEVICE_CODE\",\"OIDC_GRANT_TYPE_REFRESH_TOKEN\"],\"appType\":\"OIDC_APP_TYPE_USER_AGENT\",\"authMethodType\":\"OIDC_AUTH_METHOD_TYPE_NONE\",\"version\":\"OIDC_VERSION_1_0\",\"devMode\":true,\"accessTokenType\":\"OIDC_TOKEN_TYPE_JWT\",\"accessTokenRoleAssertion\":true,\"skipNativeAppSuccessPage\":true}")
 CLI_APP_ID=$(echo "$CLI_JSON" | jq -r '.clientId // empty')
 
+if [[ -z "$CLI_APP_ID" ]]; then
+    echo -e "${RED}❌ Failed to create CLI app${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✅ CLI App Client ID: $CLI_APP_ID${NC}"
+
 echo -e "${BLUE}Creating service user...${NC}"
 SERVICE_USER_JSON=$(curl -sS -X POST "${hdr_org[@]}" "$ZITADEL_BASE/management/v1/users/machine" \
     -d "{\"userName\":\"$SERVICE_USER_NAME\",\"name\":\"Netbird Service Account\",\"description\":\"Netbird Service Account for IDP management\",\"accessTokenType\":\"ACCESS_TOKEN_TYPE_JWT\"}")
 SERVICE_USER_ID=$(echo "$SERVICE_USER_JSON" | jq -r '.userId // empty')
 
+if [[ -z "$SERVICE_USER_ID" ]]; then
+    echo -e "${RED}❌ Failed to create service user${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✅ Service User ID: $SERVICE_USER_ID${NC}"
+
+echo -e "${BLUE}Creating secret for service user...${NC}"
 SERVICE_USER_SECRET_JSON=$(curl -sS -X PUT "${hdr_org[@]}" "$ZITADEL_BASE/management/v1/users/$SERVICE_USER_ID/secret" -d '{}')
 SERVICE_USER_CLIENT_ID=$(echo "$SERVICE_USER_SECRET_JSON" | jq -r '.clientId // empty')
 SERVICE_USER_CLIENT_SECRET=$(echo "$SERVICE_USER_SECRET_JSON" | jq -r '.clientSecret // empty')
 
+if [[ -z "$SERVICE_USER_CLIENT_ID" ]] || [[ -z "$SERVICE_USER_CLIENT_SECRET" ]]; then
+    echo -e "${RED}❌ Failed to create service user secret${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✅ Service User Client ID: $SERVICE_USER_CLIENT_ID${NC}"
+
+echo -e "${BLUE}Assigning service user as ORG_USER_MANAGER...${NC}"
 curl -sS -X POST "${hdr_org[@]}" "$ZITADEL_BASE/management/v1/orgs/me/members" -d "{\"userId\":\"$SERVICE_USER_ID\",\"roles\":[\"ORG_USER_MANAGER\"]}" >/dev/null
+echo -e "${GREEN}✅ Service user assigned as ORG_USER_MANAGER${NC}"
 
 echo -e "${GREEN}✅ Zitadel configured for NetBird${NC}\n"
 
-# ════════════════════════════════════════════════════════════════════
-# PART 4: DEPLOY NETBIRD
-# ════════════════════════════════════════════════════════════════════
 
 echo -e "${YELLOW}════════════════════════════════════════════════════${NC}"
 echo -e "${YELLOW}🌐 STEP 4: Deploying NetBird${NC}"
