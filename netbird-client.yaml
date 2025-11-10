@@ -24,7 +24,7 @@ spec:
         image: netbirdio/netbird:latest
         env:
         - name: NB_SETUP_KEY
-          value: "1720D812-14C3-473D-9A13-62E18E86D26E"
+          value: "27D89615-E7C8-46C2-B02F-0DE5C63FFB62"
         - name: NB_MANAGEMENT_URL
           value: "https://netbird.ryvie.ovh"
         - name: NB_HOSTNAME
